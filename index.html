@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mood Bubble Event</title>
+
+  <!-- Tailwind（デザイン用） -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React & ReactDOM（CDN版） -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- JSX をブラウザでそのまま書くための Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- QRコード生成ライブラリ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-slate-900">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const MBTI_TYPES = [
+      "INFJ","INFP","ENFP","ENFJ",
+      "INTJ","INTP","ENTP","ENTJ",
+      "ISFP","ISFJ","ESFP","ESFJ",
+      "ISTP","ISTJ","ESTP","ESTJ",
+    ];
+
+    function clampMood(mood) {
+      const n = Number(mood);
+      if (Number.isNaN(n)) return 1;
+      if (n < 1) return 1;
+      if (n > 10) return 10;
+      return n;
+    }
+
+    const cuteGradientForMood = (avgMood) => {
+      if (!avgMood) return "from-slate-900 via-slate-800 to-slate-900";
+      if (avgMood >= 7.5) return "from-pink-500 via-fuchsia-500 to-indigo-500"; // アゲ
+      if (avgMood <= 4.5) return "from-slate-800 via-slate-900 to-indigo-900"; // ナエ
+      return "from-sky-500 via-teal-500 to-indigo-500"; // ふつう
+    };
+
+    const moodLabel = (avgMood) => {
+      if (!avgMood || Number.isNaN(avgMood)) return { label: "まだ計測中…", emoji: "💫" };
+      if (avgMood >= 7.5) return { label: "会場の気分：アゲ!!!", emoji: "🔥" };
+      if (avgMood <= 4.5) return { label: "会場の気分：ナエ…", emoji: "🥲" };
+      return { label: "会場の気分：ふつう〜", emoji: "😌" };
+    };
+
+    const moodColor = (index) => {
+      const scale = [
+        "bg-sky-300","bg-sky-400","bg-cyan-400","bg-emerald-400","bg-lime-400",
+        "bg-yellow-300","bg-amber-300","bg-orange-400","bg-pink-400","bg-fuchsia-400",
+      ];
+      return scale[index - 1] || "bg-sky-400";
+    };
+
+    const moodBubbleShadow = (index) => {
+      const shadows = [
+        "shadow-sky-500/40","shadow-sky-500/40","shadow-cyan-500/40","shadow-emerald-500/40","shadow-lime-500/40",
+        "shadow-yellow-500/40","shadow-amber-500/40","shadow-orange-500/40","shadow-pink-500/40","shadow-fuchsia-500/40",
+      ];
+      return shadows[index - 1] || "shadow-sky-500/40";
+    };
+
+    // QRコード描画用の小さいコンポーネント
+    function QRCodeBox({ url }) {
+      const ref = useRef(null);
+
+      useEffect(() => {
+        if (!ref.current || !url) return;
+        ref.current.innerHTML = "";
+        new QRCode(ref.current, {
+          text: url,
+          width: 80,
+          height: 80,
+        });
+      }, [url]);
+
+      return (
+        <div className="bg-white rounded-2xl p-1 shadow-md">
+          <div ref={ref} />
+        </div>
+      );
+    }
+
+    function MoodBubbleApp() {
+      const [mood, setMood] = useState(7);
+      const [mbti, setMbti] = useState("INFJ");
+      const [name, setName] = useState("");
+      const [submissions, setSubmissions] = useState([]);
+      const [filterMbti, setFilterMbti] = useState("ALL");
+
+      // ★のちほど GitHub Pages のURLをここに入れる
+      const [qrUrl, setQrUrl] = useState("https://zt-hiracu.github.io/mood-bubble-event/");
+
+      const filteredSubmissions = useMemo(() => {
+        if (filterMbti === "ALL") return submissions;
+        return submissions.filter((s) => s.mbti === filterMbti);
+      }, [submissions, filterMbti]);
+
+      const stats = useMemo(() => {
+        const counts = Array.from({ length: 10 }, () => 0);
+        let sum = 0;
+        filteredSubmissions.forEach((s) => {
+          counts[s.mood - 1] += 1;
+          sum += s.mood;
+        });
+        const total = filteredSubmissions.length;
+        const avg = total ? sum / total : 0;
+        return { counts, total, avg };
+      }, [filteredSubmissions]);
+
+      const { label: overallLabel, emoji: overallEmoji } = moodLabel(stats.avg);
+      const gradient = cuteGradientForMood(stats.avg);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const clamped = clampMood(mood);
+        setSubmissions((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString() + Math.random().toString(16),
+            mood: clamped,
+            mbti,
+            name: name.trim() || "匿名",
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      };
+
+      return (
+        <div className={`min-h-screen flex items-stretch justify-center bg-gradient-to-br ${gradient} text-white font-sans`}>
+          <div className="w-full max-w-6xl mx-auto flex flex-col lg:flex-row gap-6 lg:gap-8 px-4 py-6 lg:py-10">
+            {/* 左側：入力パネル */}
+            <section className="lg:w-2/5 bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-5 lg:p-6 shadow-xl shadow-slate-950/50 flex flex-col gap-4">
+              <header className="flex items-center justify-between gap-3 mb-1">
+                <div>
+                  <h1 className="text-xl lg:text-2xl font-bold flex items-center gap-2">
+                    Mood Bubble Live
+                    <span className="inline-flex items-center justify-center rounded-full bg-pink-500/20 px-2.5 py-0.5 text-xs font-semibold text-pink-200 border border-pink-300/40">
+                      Gen Z ver.
+                    </span>
+                  </h1>
+                  <p className="text-xs lg:text-sm text-slate-300 mt-1">
+                    QRコードからアクセスして、今の気分とMBTIをポチッと送信してね。
+                  </p>
+                </div>
+                <span className="text-2xl lg:text-3xl animate-bounce">✨</span>
+              </header>
+
+              {/* QRコード */}
+              <div className="bg-slate-800/70 border border-white/10 rounded-2xl p-3 flex items-center gap-3">
+                <QRCodeBox url={qrUrl} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-slate-100 font-medium mb-1">
+                    スクリーンにこのQRコードを映して、参加者はスマホで読み取ってね。
+                  </p>
+                  <p className="text-[10px] text-slate-400 mb-1">
+                    下のURLを GitHub Pages のURLにしておくと、そこに飛べるようになるよ。
+                  </p>
+                  <input
+                    type="text"
+                    value={qrUrl}
+                    onChange={(e) => setQrUrl(e.target.value)}
+                    className="w-full bg-slate-900/80 border border-slate-600/70 rounded-xl px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-sky-400/70 focus:border-sky-300/80 text-slate-100 placeholder:text-slate-500"
+                    placeholder="https://your-name.github.io/mood-bubble-event/"
+                  />
+                </div>
+              </div>
+
+              {/* 入力フォーム */}
+              <div className="bg-slate-800/70 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between text-xs text-slate-300">
+                  <span>ステップ 1</span>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-slate-400">LIVE INPUT</span>
+                </div>
+                <p className="text-sm text-slate-100">
+                  今の気分を <span className="font-semibold text-pink-200">1〜10</span> で教えて！
+                  <span className="ml-1 text-xs text-slate-300">（1 = 激ナエ / 10 = 爆アゲ）</span>
+                </p>
+
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-1">
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
+                      <span>気分スコア</span>
+                      <span className="inline-flex items-center gap-1 text-pink-100">
+                        <span className="text-[10px] bg-pink-500/30 border border-pink-300/60 px-2 py-0.5 rounded-full font-semibold">
+                          {mood}
+                        </span>
+                        <span className="text-lg">{mood >= 7 ? "🔥" : mood <= 4 ? "🥶" : "😶"}</span>
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      value={mood}
+                      onChange={(e) => setMood(Number(e.target.value))}
+                      className="w-full accent-pink-400 cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                      <span>1 ナエ</span>
+                      <span>5 ふつう</span>
+                      <span>10 アゲ</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-300 mb-1">MBTI</label>
+                      <select
+                        value={mbti}
+                        onChange={(e) => setMbti(e.target.value)}
+                        className="w-full bg-slate-900/80 border border-slate-600/70 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400/70 focus:border-pink-300/80"
+                      >
+                        {MBTI_TYPES.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-300 mb-1">
+                        ニックネーム <span className="text-slate-500">(オプション)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="たろぴ / yui / etc"
+                        className="w-full bg-slate-900/80 border border-slate-600/70 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400/70 focus:border-pink-300/80 placeholder:text-slate-500"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-2xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-500 px-4 py-2.5 text-sm font-semibold shadow-lg shadow-pink-500/40 hover:shadow-pink-400/60 hover:scale-[1.02] active:scale-95 transition-transform"
+                  >
+                    <span>気分を送信する</span>
+                    <span className="text-lg">🚀</span>
+                  </button>
+                </form>
+              </div>
+            </section>
+
+            {/* 右側：ムードヒートマップ */}
+            <section className="lg:w-3/5 flex flex-col gap-4">
+              <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-4 lg:p-5 shadow-xl shadow-slate-950/50">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs lg:text-sm text-slate-300 mb-1">会場のムードスコア</p>
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-2xl lg:text-3xl font-black tracking-tight">
+                        {stats.avg ? stats.avg.toFixed(1) : "-.-"}
+                      </span>
+                      <span className="text-base lg:text-lg">/ 10</span>
+                      <span className="text-2xl lg:text-3xl ml-1">{overallEmoji}</span>
+                    </div>
+                    <p className="text-xs lg:text-sm text-slate-200 mt-1 font-medium">
+                      {overallLabel}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1.5">
+                      参加者数: <span className="font-semibold text-slate-100">{stats.total}</span>
+                      {filterMbti !== "ALL" && (
+                        <>
+                          <span className="mx-1">·</span>
+                          フィルター: <span className="font-semibold text-sky-200">{filterMbti}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 text-[11px]">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-800/80 border border-slate-600/70 px-2.5 py-1">
+                      <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-slate-200 font-medium">リアルタイム更新（このブラウザだけ）</span>
+                    </span>
+                    <div className="flex flex-col items-end gap-1 mt-1">
+                      <span className="text-slate-400">MBTIフィルター</span>
+                      <select
+                        value={filterMbti}
+                        onChange={(e) => setFilterMbti(e.target.value)}
+                        className="bg-slate-900/80 border border-slate-600/70 rounded-xl px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-sky-400/70"
+                      >
+                        <option value="ALL">ALL TYPE</option>
+                        {MBTI_TYPES.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 bg-slate-900/70 backdrop-blur-xl border border-white/10 rounded-3xl p-4 lg:p-5 shadow-xl shadow-slate-950/50 flex flex-col">
+                <div className="flex items-center justify-between gap-2 mb-3 lg:mb-4">
+                  <div>
+                    <p className="text-xs text-slate-300 mb-0.5">Mood Bubble Heatmap</p>
+                    <p className="text-[11px] text-slate-400">
+                      下のバブルが、みんなの気分スコアに応じてモコモコ育っていきます。
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                    <span className="h-2 w-2 rounded-full bg-sky-400" />
+                    <span>= ヒット数が多いほどバブルが大きく</span>
+                  </div>
+                </div>
+
+                <div className="relative flex-1 flex items-center justify-center overflow-hidden">
+                  <div className="relative grid grid-cols-5 lg:grid-cols-10 gap-3 lg:gap-4 w-full">
+                    {stats.counts.map((count, index) => {
+                      const moodScore = index + 1;
+                      const baseSize = 40;
+                      const extra = Math.min(count * 10, 120);
+                      const size = baseSize + extra;
+                      const hasAny = count > 0;
+
+                      return (
+                        <div
+                          key={moodScore}
+                          className="flex flex-col items-center justify-end gap-1 min-h-[90px] lg:min-h-[120px]"
+                        >
+                          <div
+                            className={`flex items-center justify-center rounded-full ${moodColor(moodScore)} ${moodBubbleShadow(moodScore)} shadow-lg transition-all duration-300 ease-out border border-white/40 ${
+                              hasAny ? "scale-100 opacity-100" : "scale-75 opacity-70 border-white/20"
+                            }`}
+                            style={{ width: size, height: size }}
+                          >
+                            <span className="text-sm font-semibold drop-shadow-sm">
+                              {count || ""}
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-[11px] font-semibold text-slate-100">{moodScore}</span>
+                            <span className="text-[10px] text-slate-400">
+                              {moodScore <= 3 ? "ナエ" : moodScore >= 8 ? "アゲ" : "中間"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<MoodBubbleApp />);
+  </script>
+</body>
+</html>
