@@ -17,6 +17,53 @@
 
   <!-- QRコード生成ライブラリ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- バブル用アニメーションCSS -->
+  <style>
+    /* ふわふわ浮くアニメーション（外側のラッパーに適用） */
+    .bubble-float-wrap {
+      animation: float-sway 6s ease-in-out infinite;
+    }
+
+    @keyframes float-sway {
+      0%   { transform: translate(0, 0); }
+      25%  { transform: translate(4px, -6px); }
+      50%  { transform: translate(0, -10px); }
+      75%  { transform: translate(-4px, -6px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    /* 新しい感情が追加されたときに、メインバブルがポヨンと大きくなる */
+    .bubble-hit {
+      animation: hit-grow 400ms ease-out;
+    }
+
+    @keyframes hit-grow {
+      0%   { transform: scale(0.9); }
+      40%  { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
+
+    /* 小さいバブルが現れて、吸い込まれるように消える */
+    .mini-bubble {
+      animation: mini-pop 600ms ease-out forwards;
+    }
+
+    @keyframes mini-pop {
+      0% {
+        transform: translate(-8px, -8px) scale(0.3);
+        opacity: 0;
+      }
+      40% {
+        transform: translate(-2px, -14px) scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(0, 0) scale(0.2);
+        opacity: 0;
+      }
+    }
+  </style>
 </head>
 <body class="bg-slate-900">
   <div id="root"></div>
@@ -96,9 +143,16 @@
       const [name, setName] = useState("");
       const [submissions, setSubmissions] = useState([]);
       const [filterMbti, setFilterMbti] = useState("ALL");
-
-      // ★のちほど GitHub Pages のURLをここに入れる
       const [qrUrl, setQrUrl] = useState("https://zt-hiracu.github.io/mood-bubble-event/");
+
+      // 最後にヒットした mood（アニメーション用）
+      const [lastHit, setLastHit] = useState(null);
+
+      useEffect(() => {
+        if (!lastHit) return;
+        const timer = setTimeout(() => setLastHit(null), 700); // 0.7秒後にリセット
+        return () => clearTimeout(timer);
+      }, [lastHit]);
 
       const filteredSubmissions = useMemo(() => {
         if (filterMbti === "ALL") return submissions;
@@ -133,6 +187,8 @@
             createdAt: new Date().toISOString(),
           },
         ]);
+        // どのバブルがヒットしたか記録
+        setLastHit({ mood: clamped, at: Date.now() });
       };
 
       return (
@@ -321,6 +377,9 @@
                       const extra = Math.min(count * 10, 120);
                       const size = baseSize + extra;
                       const hasAny = count > 0;
+                      const isHit = lastHit && lastHit.mood === moodScore;
+
+                      const floatDelay = `${index * 0.25}s`;
 
                       return (
                         <div
@@ -328,15 +387,35 @@
                           className="flex flex-col items-center justify-end gap-1 min-h-[90px] lg:min-h-[120px]"
                         >
                           <div
-                            className={`flex items-center justify-center rounded-full ${moodColor(moodScore)} ${moodBubbleShadow(moodScore)} shadow-lg transition-all duration-300 ease-out border border-white/40 ${
-                              hasAny ? "scale-100 opacity-100" : "scale-75 opacity-70 border-white/20"
-                            }`}
-                            style={{ width: size, height: size }}
+                            className="bubble-float-wrap relative flex items-center justify-center"
+                            style={{ width: size, height: size, animationDelay: floatDelay }}
                           >
-                            <span className="text-sm font-semibold drop-shadow-sm">
-                              {count || ""}
-                            </span>
+                            {/* メインバブル */}
+                            <div
+                              className={
+                                `flex items-center justify-center rounded-full ${moodColor(moodScore)} ${moodBubbleShadow(moodScore)} shadow-lg border border-white/40 ` +
+                                (hasAny ? "opacity-100" : "opacity-70 border-white/20") +
+                                (isHit ? " bubble-hit" : "")
+                              }
+                              style={{ width: "100%", height: "100%" }}
+                            >
+                              <span className="text-sm font-semibold drop-shadow-sm">
+                                {count || ""}
+                              </span>
+                            </div>
+
+                            {/* 新規投稿時のミニバブル */}
+                            {isHit && (
+                              <div
+                                className="mini-bubble absolute -top-2 -right-2 rounded-full bg-white/80"
+                                style={{
+                                  width: size * 0.35,
+                                  height: size * 0.35,
+                                }}
+                              />
+                            )}
                           </div>
+
                           <div className="flex flex-col items-center gap-0.5">
                             <span className="text-[11px] font-semibold text-slate-100">{moodScore}</span>
                             <span className="text-[10px] text-slate-400">
